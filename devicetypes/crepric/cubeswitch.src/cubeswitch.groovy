@@ -8,7 +8,7 @@ metadata {
 
 
 		fingerprint profileId: "0104", inClusters: "0006, 0004, 0003, 0000, 0005", outClusters: "0019", manufacturer: "Compacta International, Ltd", model: "ZBMPlug15", deviceJoinName: "SmartPower Outlet V1"
-	    attribute "faceState", "number"
+	    attribute "currentFace", "number"
     }
 
 	// simulator metadata
@@ -16,7 +16,7 @@ metadata {
 	}
 
 	tiles(scale: 2) {
-		valueTile("faceState", "device.faceState", inactiveLabel: false, width: 2, height: 2) {
+		valueTile("currentFace", "device.currentFace", inactiveLabel: false, width: 2, height: 2) {
 			state "3Axis", label: '${currentValue}', unit: ""
 		}
         valueTile("battery", "device.battery", decoration: "flat", inactiveLabel: false, width: 2, height: 2) {
@@ -26,8 +26,8 @@ metadata {
 			state("active", label: 'Active', icon: "st.motion.acceleration.active", backgroundColor: "#53a7c0")
 			state("inactive", label: 'Inactive', icon: "st.motion.acceleration.inactive", backgroundColor: "#ffffff")
 		}
-		main  "faceState", "acceleration"
-		details "faceState", "battery", "acceleration"
+		main  "currentFace", "acceleration"
+		details "currentFace", "battery", "acceleration"
 	}
 }
 
@@ -116,14 +116,14 @@ private List<Map> parseAxis(List<Map> attrData) {
         scene_code = sign?4:3
     }
 	results << [
-			name           : "faceState",
+			name           : "currentFace",
 			value          : scene_code,
 			linkText       : getLinkText(device),
 			descriptionText: "${getLinkText(device)} was ${value}",
 			handlerName    : name,
-			isStateChange  : isStateChange(device, "faceState", value),
+			isStateChange  : isStateChange(device, "currentFace", value),
 	]
-    log.debug "parseAxis -- ${value} " + isStateChange(device, "faceState", value)
+    log.debug "newFace -- ${scene_code} " + isStateChange(device, "currentFace", value)
 	results
 }
 
