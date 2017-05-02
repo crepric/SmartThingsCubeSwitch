@@ -29,7 +29,10 @@ metadata {
 		capability "Battery"
 		capability "Temperature Measurement"
 
-		fingerprint profileId: "0104", inClusters: "0006, 0004, 0003, 0000, 0005", outClusters: "0019", manufacturer: "Compacta International, Ltd", model: "ZBMPlug15", deviceJoinName: "SmartPower Outlet V1"
+        fingerprint inClusters: "0000,0001,0003,0402,0500,0020,0B05,FC02", outClusters: "0019", manufacturer: "CentraLite", model: "3320"
+		fingerprint inClusters: "0000,0001,0003,0402,0500,0020,0B05,FC02", outClusters: "0019", manufacturer: "CentraLite", model: "3321"
+		fingerprint inClusters: "0000,0001,0003,0402,0500,0020,0B05,FC02", outClusters: "0019", manufacturer: "CentraLite", model: "3321-S", deviceJoinName: "Multipurpose Sensor"
+		fingerprint inClusters: "0000,0001,0003,000F,0020,0402,0500,FC02", outClusters: "0019", manufacturer: "SmartThings", model: "multiv4", deviceJoinName: "Multipurpose Sensor"
 	    attribute "currentFace", "number"
     }
 
@@ -41,8 +44,16 @@ metadata {
 		valueTile("currentFace", "device.currentFace", inactiveLabel: false, width: 2, height: 2) {
 			state "3Axis", label: '${currentValue}', unit: ""
 		}
-        valueTile("battery", "device.battery", decoration: "flat", inactiveLabel: false, width: 2, height: 2) {
-			state "battery", label: '${currentValue}% battery', unit: ""
+        valueTile("battery", "device.battery", width: 2, height: 2) {
+			state("battery", label: '${currentValue}% batt', unit: "",
+            	  backgroundColors: [
+							[value: 10, color: "#bc2323"],
+							[value: 25, color: "#d04e00"],
+							[value: 50, color: "#ffe700"],
+							[value: 75, color: "#90d2a7"],
+							[value: 95, color: "#008000"],
+					])
+                   
 		}
         standardTile("acceleration", "device.acceleration", width: 2, height: 2) {
 			state("active", label: 'Active', icon: "st.motion.acceleration.active", backgroundColor: "#53a7c0")
@@ -51,13 +62,12 @@ metadata {
         valueTile("temperature", "device.temperature", width: 2, height: 2) {
 			state("temperature", label: '${currentValue}°' ,
 					backgroundColors: [
-							[value: 31, color: "#153591"],
-							[value: 44, color: "#1e9cbb"],
-							[value: 59, color: "#90d2a7"],
-							[value: 74, color: "#44b621"],
-							[value: 84, color: "#f1d801"],
-							[value: 95, color: "#d04e00"],
-							[value: 96, color: "#bc2323"]
+							[value: 10, color: "#153591"],
+							[value: 15, color: "#1e9cbb"],
+							[value: 20, color: "#90d2a7"],
+							[value: 25, color: "#f1d801"],
+							[value: 30, color: "#d04e00"],
+							[value: 35, color: "#bc2323"]
 					]
 			)
 		}
@@ -75,9 +85,10 @@ def parse(String description) {
 	if (!maps[0]) {
 		maps = []
 		if (description?.startsWith('zone status')) {
-			// maps += parseIasMessage(description)
+			log.debug("Ignoring zone status message")
 		} else {
 			Map descMap = zigbee.parseDescriptionAsMap(description)
+            log.debug "descmap: " + descMap
 			if (descMap?.clusterInt == 0x0001 && descMap.commandInt != 0x07 && descMap?.value) {
 			    maps << getBatteryResult(Integer.parseInt(descMap.value, 16))
 			} else if (descMap?.clusterInt == zigbee.TEMPERATURE_MEASUREMENT_CLUSTER && descMap.commandInt == 0x07) {
@@ -93,12 +104,9 @@ def parse(String description) {
 		}
 	} else if (maps[0].name == "temperature") {
 		def map = maps[0]
-		if (tempOffset) {
-			map.value = (int) map.value + (int) tempOffset
-		}
 		map.descriptionText = map.unit == 'C' ? "${device.displayName} was ${map.value}°C" : "${device.displayName} was ${map.value}°F"
 		map.translatable = true
-        log.debug map
+        log.debug "Parsed temperature message: " + maps
 	}
 
 	def result = maps.inject([]) {acc, it ->
@@ -115,6 +123,9 @@ def parse(String description) {
 	return result
 }
 
+/**
+ * Analyze acceleration to determine what cube face is currently selected.
+**/
 private List<Map> handleAcceleration(descMap) {
 	def result = []
     if (state.last_sent_face == null) {
@@ -133,18 +144,9 @@ private List<Map> handleAcceleration(descMap) {
 			}
         } else {
             log.debug("Inactive " + state.current_face)
-//        	result << [
-//			name           : "currentFace",
-//			value          : state.current_face,
-//			linkText       : getLinkText(device),
-//			descriptionText: "${getLinkText(device)} was ${value}",
-//			handlerName    : name,
-//			isStateChange  : (state.last_sent_face != state.current_face)
-//	        ]
             state.last_sent_face = 0
             state.active = false
         }
-        log.debug(value)
 		result << [
 				name           : "acceleration",
 				value          : value,
@@ -152,8 +154,6 @@ private List<Map> handleAcceleration(descMap) {
 				isStateChange  : isStateChange(device, "acceleration", value),
 				translatable   : true
 		]
-
-
 	} else if (descMap.clusterInt == 0xFC02 && descMap.attrInt == 0x0012) {
 		def addAttrs = descMap.additionalAttrs
 		addAttrs << ["attrInt": descMap.attrInt, "value": descMap.value]
@@ -168,7 +168,9 @@ private List<Map> handleAcceleration(descMap) {
 			isStateChange  : (state.last_sent_face != state.current_face)
 	    ]
         state.last_sent_face = state.current_face
-	}
+	} else {
+        log.debug("Could not process acceleration data.")
+    }
 	return result
 }
 
@@ -193,8 +195,6 @@ private Integer parseAxis(List<Map> attrData) {
     } else if (max_value_coordinate == 'z') {
         scene_code = sign?4:3
     }
-    state.current_face = scene_code
-//  log.debug "newFace -- ${scene_code} " + (state.current_face != scene_code)
     state.current_face = scene_code
 	return scene_code
 }
@@ -243,7 +243,7 @@ private hexToInt(value) {
 
 /**
  * PING is used by Device-Watch in attempt to reach the Device
- * */
+ **/
 def ping() {
 	return zigbee.readAttribute(0x001, 0x0020) // Read the Battery Level
 }
@@ -259,24 +259,15 @@ def configure() {
 	log.debug "Configuring Reporting"
 	def configCmds = []
 
-	//if (device.getDataValue("manufacturer") == "SmartThings") {
-		log.debug "Refreshing Values for manufacturer: SmartThings "
-		/* These values of Motion Threshold Multiplier(0x01) and Motion Threshold (0x0276)
-            seem to be giving pretty accurate results for the XYZ co-ordinates for this manufacturer.
-            Separating these out in a separate if-else because I do not want to touch Centralite part
-            as of now.
-        */
-		configCmds += zigbee.writeAttribute(0xFC02, 0x0000, 0x20, 0x01, [mfgCode: manufacturerCode])
-		configCmds += zigbee.writeAttribute(0xFC02, 0x0002, 0x21, 0x0276, [mfgCode: manufacturerCode])
-	//} else {
-		// Write a motion threshold of 2 * .063g = .126g
-		// Currently due to a Centralite firmware issue, this will cause a read attribute response that
-		// indicates acceleration even when there isn't.
-	//	configCmds += zigbee.writeAttribute(0xFC02, 0x0000, 0x20, 0x02, [mfgCode: manufacturerCode])
-	//}
+    def manufacturerCode = device.getDataValue("manufacturerCode")
+    log.debug "Refreshing Values for manufacturer: " + manufacturerCode
+	// Setting Motion Threshold Multiplier(0x01) and Motion Threshold (0x0276).
+	configCmds += zigbee.writeAttribute(0xFC02, 0x0000, 0x20, 0x01, [mfgCode: manufacturerCode])
+	configCmds += zigbee.writeAttribute(0xFC02, 0x0002, 0x21, 0x0276, [mfgCode: manufacturerCode])
 
-	// temperature minReportTime 30 seconds, maxReportTime 5 min. Reporting interval if no activity
-	// battery minReport 30 seconds, maxReportTime 6 hrs by default
+	// temperature minReportTime 30 seconds, maxReportTime 5min. Reporting interval if no activity
+	// battery minReport 10 seconds, maxReportTime 1 hr by default.
+    // Report for X, Y, Z axis (0x0012, 0x0013, 0x0014) to minumum 1 sec, max 1 hours.
 	configCmds += zigbee.batteryConfig() +
 			zigbee.temperatureConfig(30, 300) +
 			zigbee.configureReporting(0xFC02, 0x0010, DataType.BITMAP8, 10, 3600, 0x01, [mfgCode: manufacturerCode]) +
@@ -287,8 +278,10 @@ def configure() {
 	return refresh() + configCmds
 }
 
+/** 
+ * Returns commands to read temperatore and battery
+ **/
 def refresh() {
-	log.debug "Refreshing Values "
 	def refreshCmds = zigbee.readAttribute(zigbee.TEMPERATURE_MEASUREMENT_CLUSTER, 0x0000) +
 			zigbee.readAttribute(zigbee.POWER_CONFIGURATION_CLUSTER, 0x0020) +
 			zigbee.readAttribute(0xFC02, 0x0010, [mfgCode: manufacturerCode]) +
