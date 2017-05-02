@@ -1,5 +1,5 @@
 /**
- *  Scene Cube
+ *  Brightness Cube
  *
  *  Copyright 2017 Riccardo Crepaldi
  *
@@ -15,10 +15,10 @@
  */
 
 definition(
-    name: "Scene Cube",
+    name: "Brightness Cube",
     namespace: "crepric",
     author: "Riccardo Crepaldi",
-    description: "Uses the motion sensor inside a plastic photo cube to control 6 scenes in a given room.",
+    description: "Uses the motion sensor inside a plastic photo cube to control 6 brightness levels in a given room.",
     category: "Convenience",
     iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
     iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
@@ -31,30 +31,24 @@ preferences {
          input "cube_sensor", "capability.accelerationSensor", required: true, title: "Which sensor is inside the cube?"
     }
     section("Which lights?") {
-        input "lights", "capability.colorTemperature", multiple: true
+        input "lights", "capability.switchLevel", multiple: true
     }
     section("Scene 1") {
-		input (name:"temp_1", type:"number", range: "2200..6500", required: true, title: "What is the light temperature?")
         input (name:"bright_1", type:"number", range: "0..100", required: true, title: "What is the brightness level?")
     }
     section("Scene 2") {
-		input (name:"temp_2", type:"number", range: "2200..6500", required: true, title: "What is the light temperature?")
         input (name:"bright_2", type:"number", range: "0..100", required: true, title: "What is the brightness level?")
     }
     section("Scene 3") {
-		input (name:"temp_3", type:"number", range: "2200..6500", required: true, title: "What is the light temperature?")
         input (name:"bright_3", type:"number", range: "0..100", required: true, title: "What is the brightness level?")
     }
     section("Scene 4") {
-		input (name:"temp_4", type:"number", range: "2200..6500", required: true, title: "What is the light temperature?")
         input (name:"bright_4", type:"number", range: "0..100", required: true, title: "What is the brightness level?")
     }
     section("Scene 5") {
-		input (name:"temp_5", type:"number", range: "2200..6500", required: true, title: "What is the light temperature?")
         input (name:"bright_5", type:"number", range: "0..100", required: true, title: "What is the brightness level?")
     }
     section("Scene 6") {
-		input (name:"temp_6", type:"number", range: "2200..6500", required: true, title: "What is the light temperature?")
         input (name:"bright_6", type:"number", range: "0..100", required: true, title: "What is the brightness level?")
     }
 }
@@ -87,34 +81,28 @@ def getSceneValues(scene_code) {
     log.debug "Adding scene code: " + scene_code
     switch(scene_code) {
     	case "1":
-        	temp = temp_1
             brightness = bright_1
             break
         case "2":
-            temp = temp_2
             brightness = bright_2
             break
         case "3":
-            temp = temp_3
             brightness = bright_3
             break
         case "4":
-            temp = temp_4
             brightness = bright_4
             break
         case "5":
-            temp = temp_5
             brightness = bright_5
             break
         case "6":
-            temp = temp_6
             brightness = bright_6
             break
         default:
             log.debug "This should never happen."
     }
     on = brightness > 0
-    def res = ['temp': temp, 'brightness': brightness, 'on': on]
+    def res = ['brightness': brightness, 'on': on]
     log.debug "New setting " + res
     return res
 }
@@ -126,12 +114,6 @@ def setScene(current_face) {
         log.debug "No change. Returning."
         return
     }
-    if (new_scene_values.on) {
-        lights*.setLevel(new_scene_values.brightness)
-        lights*.setColorTemperature(new_scene_values.temp)
-    } else {
-        lights*.off()
-    }
+    lights*.setLevel(new_scene_values.brightness)
     state.current_face = scene_code
 }
-
