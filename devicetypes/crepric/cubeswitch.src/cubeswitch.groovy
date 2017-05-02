@@ -1,3 +1,25 @@
+/*
+ * Cube switch. Author: crepric@gmail.com
+ *
+ * Work based on the SmartSense Multisensor template:
+ *    Author: Devide Handler
+ *    Copyright 2016 SmartThings
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ *  use this file except in compliance with the License. You may obtain a copy
+ *  of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ *  License for the specific language governing permissions and limitations
+ *  under the License.
+ */
+
+import physicalgraph.zigbee.zcl.DataType
+
 metadata {
 	definition (name: "CubeSwitch", namespace: "crepric", author: "Riccardo Crepaldi") {
 		capability "Acceleration Sensor"
@@ -5,7 +27,7 @@ metadata {
 		capability "Sensor"
         capability "Configuration"
 		capability "Battery"
-
+		capability "Temperature Measurement"
 
 		fingerprint profileId: "0104", inClusters: "0006, 0004, 0003, 0000, 0005", outClusters: "0019", manufacturer: "Compacta International, Ltd", model: "ZBMPlug15", deviceJoinName: "SmartPower Outlet V1"
 	    attribute "currentFace", "number"
@@ -26,15 +48,30 @@ metadata {
 			state("active", label: 'Active', icon: "st.motion.acceleration.active", backgroundColor: "#53a7c0")
 			state("inactive", label: 'Inactive', icon: "st.motion.acceleration.inactive", backgroundColor: "#ffffff")
 		}
+        valueTile("temperature", "device.temperature", width: 2, height: 2) {
+			state("temperature", label: '${currentValue}°' ,
+					backgroundColors: [
+							[value: 31, color: "#153591"],
+							[value: 44, color: "#1e9cbb"],
+							[value: 59, color: "#90d2a7"],
+							[value: 74, color: "#44b621"],
+							[value: 84, color: "#f1d801"],
+							[value: 95, color: "#d04e00"],
+							[value: 96, color: "#bc2323"]
+					]
+			)
+		}
 		main  "currentFace", "acceleration"
-		details "currentFace", "battery", "acceleration"
+		details "currentFace", "battery", "acceleration", "temperature"
 	}
 }
 
 // Parse incoming device messages to generate events
 def parse(String description) {
+    log.debug "Parsing ${description}"
 	def maps = []
 	maps << zigbee.getEvent(description)
+    log.debug maps
 	if (!maps[0]) {
 		maps = []
 		if (description?.startsWith('zone status')) {
@@ -46,7 +83,7 @@ def parse(String description) {
 			} else if (descMap?.clusterInt == zigbee.TEMPERATURE_MEASUREMENT_CLUSTER && descMap.commandInt == 0x07) {
 				if (descMap.data[0] == "00") {
 					log.debug "TEMP REPORTING CONFIG RESPONSE: $descMap"
-					// sendEvent(name: "checkInterval", value: 60 * 12, displayed: false, data: [protocol: "zigbee", hubHardwareId: device.hub.hardwareID])
+					sendEvent(name: "checkInterval", value: 60 * 12, displayed: false, data: [protocol: "zigbee", hubHardwareId: device.hub.hardwareID])
 				} else {
 					log.warn "TEMP REPORTING CONFIG FAILED- error code: ${descMap.data[0]}"
 				}
@@ -54,6 +91,14 @@ def parse(String description) {
 				maps += handleAcceleration(descMap)
 			}
 		}
+	} else if (maps[0].name == "temperature") {
+		def map = maps[0]
+		if (tempOffset) {
+			map.value = (int) map.value + (int) tempOffset
+		}
+		map.descriptionText = map.unit == 'C' ? "${device.displayName} was ${map.value}°C" : "${device.displayName} was ${map.value}°F"
+		map.translatable = true
+        log.debug map
 	}
 
 	def result = maps.inject([]) {acc, it ->
@@ -66,15 +111,40 @@ def parse(String description) {
 		log.debug "enroll response: ${cmds}"
 		result = cmds?.collect { new physicalgraph.device.HubAction(it) }
 	}
+    log.debug result
 	return result
 }
 
 private List<Map> handleAcceleration(descMap) {
 	def result = []
-
+    if (state.last_sent_face == null) {
+    	state.last_sent_face = 0
+    }
+    if (state.current_face == null) {
+    	state.current_face = 0
+    }
 	if (descMap.clusterInt == 0xFC02 && descMap.attrInt == 0x0010) {
 		def value = descMap.value == "01" ? "active" : "inactive"
 		log.debug "Acceleration $value"
+        if (value == "active") {
+        	state.active = true
+            if (descMap.additionalAttrs) {
+				parseAxis(descMap.additionalAttrs)
+			}
+        } else {
+            log.debug("Inactive " + state.current_face)
+//        	result << [
+//			name           : "currentFace",
+//			value          : state.current_face,
+//			linkText       : getLinkText(device),
+//			descriptionText: "${getLinkText(device)} was ${value}",
+//			handlerName    : name,
+//			isStateChange  : (state.last_sent_face != state.current_face)
+//	        ]
+            state.last_sent_face = 0
+            state.active = false
+        }
+        log.debug(value)
 		result << [
 				name           : "acceleration",
 				value          : value,
@@ -83,18 +153,26 @@ private List<Map> handleAcceleration(descMap) {
 				translatable   : true
 		]
 
-		if (descMap.additionalAttrs) {
-			result += parseAxis(descMap.additionalAttrs)
-		}
+
 	} else if (descMap.clusterInt == 0xFC02 && descMap.attrInt == 0x0012) {
 		def addAttrs = descMap.additionalAttrs
 		addAttrs << ["attrInt": descMap.attrInt, "value": descMap.value]
-		result += parseAxis(addAttrs)
+		state.current_face = parseAxis(addAttrs)
+        log.debug("sending " + state.current_face)
+        result << [
+			name           : "currentFace",
+			value          : state.current_face,
+			linkText       : getLinkText(device),
+			descriptionText: "${getLinkText(device)} was ${value}",
+			handlerName    : name,
+			isStateChange  : (state.last_sent_face != state.current_face)
+	    ]
+        state.last_sent_face = state.current_face
 	}
 	return result
 }
 
-private List<Map> parseAxis(List<Map> attrData) {
+private Integer parseAxis(List<Map> attrData) {
 	def results = []
 	def x = hexToSignedInt(attrData.find { it.attrInt == 0x0012 }?.value)
 	def y = hexToSignedInt(attrData.find { it.attrInt == 0x0013 }?.value)
@@ -115,16 +193,10 @@ private List<Map> parseAxis(List<Map> attrData) {
     } else if (max_value_coordinate == 'z') {
         scene_code = sign?4:3
     }
-	results << [
-			name           : "currentFace",
-			value          : scene_code,
-			linkText       : getLinkText(device),
-			descriptionText: "${getLinkText(device)} was ${value}",
-			handlerName    : name,
-			isStateChange  : isStateChange(device, "currentFace", value),
-	]
-    log.debug "newFace -- ${scene_code} " + isStateChange(device, "currentFace", value)
-	results
+    state.current_face = scene_code
+//  log.debug "newFace -- ${scene_code} " + (state.current_face != scene_code)
+    state.current_face = scene_code
+	return scene_code
 }
 
 private Map getBatteryResult(rawValue) {
