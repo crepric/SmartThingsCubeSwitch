@@ -138,13 +138,13 @@ private List<Map> handleAcceleration(descMap) {
 		def value = descMap.value == "01" ? "active" : "inactive"
 		log.debug "Acceleration $value"
         if (value == "active") {
+            state.last_sent_face = 0
         	state.active = true
             if (descMap.additionalAttrs) {
 				parseAxis(descMap.additionalAttrs)
 			}
         } else {
             log.debug("Inactive " + state.current_face)
-            state.last_sent_face = 0
             state.active = false
         }
 		result << [
