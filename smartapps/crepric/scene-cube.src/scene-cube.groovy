@@ -72,12 +72,17 @@ def updated() {
 }
 
 def initialize() {
+	log.debug("Initializing")
+	unsubscribe()
     subscribe(cube_sensor, "currentFace", cubeMotionHandler)
 }
 
 def cubeMotionHandler(evt) {
 	log.debug (evt.name + " " + evt.value + " " + evt.isStateChange())
-	setScene(evt.value)
+	// Delete previously scheduled event if face is moved in the meantime.
+	unschedule(setScene)
+    // Schedule new event if cube is not moved within the next 2 seconds.
+	runIn(2, "setScene", [data: [current_face: evt.value]])
 }
 
 def getSceneValues(scene_code) { 
@@ -119,7 +124,8 @@ def getSceneValues(scene_code) {
     return res
 }
 
-def setScene(current_face) {
+def setScene(data) {
+	def current_face = data.current_face
     def new_scene_values = getSceneValues(current_face)
     log.debug "New Scene: " + new_scene_values
     if (current_face == state.current_face) {
