@@ -71,7 +71,8 @@ def initialize() {
 
 def cubeMotionHandler(evt) {
 	log.debug (evt.name + " " + evt.value + " " + evt.isStateChange())
-	setScene(evt.value)
+    unschedule()
+ 	runIn(2, "setScene", [data: [current_face: evt.value]])
 }
 
 def getSceneValues(scene_code) { 
@@ -107,7 +108,8 @@ def getSceneValues(scene_code) {
     return res
 }
 
-def setScene(current_face) {
+def setScene(data) {
+	def current_face = data.current_face
     def new_scene_values = getSceneValues(current_face)
     log.debug "New Scene: " + new_scene_values
     if (current_face == state.current_face) {
